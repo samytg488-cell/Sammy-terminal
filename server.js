@@ -17,37 +17,45 @@ const io = new Server(server, { cors: { origin: "*" } });
 let marketPrice = 100.00;
 let activeUsers = 0;
 let history = []; 
-let buyOrders = []; // Pending Market Liquidity
+let buyOrders = []; 
 let sellOrders = []; 
-let userWallets = {}; // Track individual balances
+let userWallets = {}; 
 
-// --- SMART AI BOTS ENGINE ---
-// Ye bots market mein liquidity maintain karte hain aur Institutional moves banate hain
+// --- SMART AI BOTS ENGINE (Whale vs Retailer Hierarchy) ---
 const runSmartBots = () => {
     setInterval(() => {
-        const botDecision = Math.random();
-        let size = Math.floor(Math.random() * 15000) + 5000;
+        const botType = Math.random();
         
-        if (botDecision > 0.97) { 
-            // INSTITUTIONAL WHALE MOVE (3% chance)
-            const whaleSize = Math.floor(Math.random() * 150000) + 50000;
+        if (botType > 0.98) { 
+            // 1. GOD-MODE WHALE BOT (100x Your Power)
+            // Ye bots market ka trend palatne ki taqat rakhte hain
+            const whaleSize = Math.floor(Math.random() * 5000000) + 1000000; // 1M to 5M lots
             const side = Math.random() > 0.5 ? 'buy' : 'sell';
-            processTradeMatching(side, whaleSize, "WHALE_INSTITUTION");
-        } else if (botDecision > 0.60) {
-            // MARKET MAKERS (Providing Liquidity)
-            buyOrders.push({ id: 'SMART_BOT', size: size });
-            sellOrders.push({ id: 'SMART_BOT', size: size });
-            
-            // Limit order book size to prevent memory leaks
-            if(buyOrders.length > 50) buyOrders.shift();
-            if(sellOrders.length > 50) sellOrders.shift();
+            processTradeMatching(side, whaleSize, "CORE_WHALE_INSTITUTION");
+        } 
+        else if (botType > 0.85) {
+            // 2. INSTITUTIONAL BOT (High Power)
+            const instSize = Math.floor(Math.random() * 800000) + 200000;
+            const side = Math.random() > 0.5 ? 'buy' : 'sell';
+            processTradeMatching(side, instSize, "BANK_OF_ALGO");
         }
-    }, 2500);
+        else {
+            // 3. RETAILER BOTS (Your Level)
+            // Ye bots market mein normal liquidity aur noise banate hain
+            let retailSize = Math.floor(Math.random() * 40000) + 5000;
+            buyOrders.push({ id: 'RETAIL_BOT', size: retailSize });
+            sellOrders.push({ id: 'RETAIL_BOT', size: retailSize });
+            
+            if(buyOrders.length > 60) buyOrders.shift();
+            if(sellOrders.length > 60) sellOrders.shift();
+        }
+    }, 2000);
 };
 
 // --- ORDER MATCHING & PRICE IMPACT LOGIC ---
 function processTradeMatching(side, size, traderID) {
-    let impact = size / 100000; // Har 100k lots par $1 ka impact
+    // Price Impact: Badi quantity se market hilega
+    let impact = size / 120000; 
     let matched = false;
 
     if (side === 'buy') {
@@ -72,13 +80,8 @@ function processTradeMatching(side, size, traderID) {
 
     if (matched) {
         io.emit('orderLog', { 
-            msg: `MATCHED: ${traderID} ${side.toUpperCase()} ${size.toLocaleString()} lots.`,
+            msg: `EXECUTED: ${traderID} matched ${size.toLocaleString()} lots.`,
             color: side === 'buy' ? '#10b981' : '#f43f5e'
-        });
-    } else {
-        io.emit('orderLog', { 
-            msg: `PENDING: ${traderID} waiting for opposite liquidity.`,
-            color: '#fbbf24'
         });
     }
 }
@@ -96,16 +99,16 @@ function reduceLiquidity(orderArray, sizeToReduce) {
     }
 }
 
-// --- CORE MARKET ENGINE ---
+// --- CORE MARKET ENGINE (Candle Synchronization) ---
 setInterval(() => {
-  // Natural drift (Market noise)
-  marketPrice += (Math.random() - 0.5) * 0.01;
+  marketPrice += (Math.random() - 0.5) * 0.012; // Natural Volatility
   
   let now = Date.now();
+  // 1 Minute Candle Core Logic
   if (history.length === 0 || now - history[history.length-1].x >= 60000) {
     let open = history.length > 0 ? history[history.length-1].close : marketPrice;
     history.push({ x: now, open, high: marketPrice, low: marketPrice, close: marketPrice });
-    if(history.length > 100) history.shift();
+    if(history.length > 200) history.shift();
   } else {
     let last = history[history.length-1];
     last.high = Math.max(last.high, marketPrice);
@@ -125,24 +128,23 @@ setInterval(() => {
 // --- CONNECTION HANDLER ---
 io.on('connection', (socket) => {
   activeUsers++;
-  userWallets[socket.id] = 50000; // Starting capital for each user
+  userWallets[socket.id] = 50000; 
   
   io.emit('userCountUpdate', activeUsers);
   socket.emit('initData', history);
 
   socket.on('executeTrade', (data) => {
-    // Check if user is bankrupt
     if (userWallets[socket.id] <= 0) {
-        socket.emit('orderLog', { msg: "EXECUTION REJECTED: Account Bankrupt!", color: "#ff0000" });
+        socket.emit('orderLog', { msg: "REJECTED: Margin Call / Bankrupt!", color: "#ff0000" });
         return;
     }
-    processTradeMatching(data.side, data.size, `TRADER_${socket.id.substring(0,4)}`);
+    processTradeMatching(data.side, data.size, `PLAYER_${socket.id.substring(0,4)}`);
   });
 
   socket.on('updateBalance', (newBalance) => {
     userWallets[socket.id] = newBalance;
     if (newBalance <= 0) {
-        io.emit('orderLog', { msg: `LIQUIDATION: TRADER_${socket.id.substring(0,4)} wiped out!`, color: "#f43f5e" });
+        io.emit('orderLog', { msg: `ACCOUNT_WIPED: PLAYER_${socket.id.substring(0,4)} has been liquidated!`, color: "#f43f5e" });
     }
   });
 
@@ -153,7 +155,7 @@ io.on('connection', (socket) => {
   });
 });
 
-runSmartBots(); // Start AI Liquidity
+runSmartBots(); // Power on the Institutions
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Institutional Engine Live on ${PORT}`));
+server.listen(PORT, () => console.log(`Institutional Terminal Engine Live on ${PORT}`));
