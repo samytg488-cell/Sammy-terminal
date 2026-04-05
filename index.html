@@ -12,12 +12,19 @@
   }
   body, html { margin:0; padding:0; width:100%; height:100%; background:var(--bg); color:var(--text); font-family: 'JetBrains Mono', monospace; overflow:hidden; }
   
-  /* Layout: Left Sidebar (350px) and Right Chart (Full Center/Right) */
   .container { display: grid; grid-template-columns: 350px 1fr; height: 100vh; }
 
+  /* Left Side Sidebar */
   .sidebar { background: var(--panel); border-right: 2px solid var(--border); display: flex; flex-direction: column; padding: 20px; gap: 15px; overflow-y: auto; z-index: 10; }
+  
+  /* Right Side Chart Area */
   .chart-area { background: #000; position: relative; display: flex; flex-direction: column; }
   
+  /* Timeframe Bar */
+  .tf-bar { position: absolute; top: 15px; left: 15px; z-index: 100; display: flex; gap: 5px; background: rgba(0,0,0,0.8); padding: 5px; border-radius: 6px; border: 1px solid var(--border); }
+  .tf-btn { background: #161b22; border: 1px solid var(--border); color: var(--text); padding: 5px 12px; cursor: pointer; border-radius: 4px; font-size: 11px; font-weight: bold; transition: 0.2s; }
+  .tf-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
   .module { background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 15px; border-radius: 10px; }
   .label { font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
   .val { font-size: 24px; font-weight: 900; }
@@ -34,7 +41,6 @@
   #sellBar { background: var(--red); width: 50%; transition: 0.4s; }
 
   #logs { font-size: 11px; color: #6b7280; flex: 1; overflow-y: auto; border-top: 1px solid var(--border); padding-top: 15px; line-height: 1.6; }
-  .status-tag { font-size: 10px; color: var(--green); font-weight: bold; }
 </style>
 </head>
 <body>
@@ -42,20 +48,20 @@
 <div class="container">
   <aside class="sidebar">
     <div style="display:flex; justify-content:space-between; align-items:center;">
-      <span style="font-weight:900; color:var(--accent); font-size:18px;">SAMMY_v15_PRO</span>
-      <span id="status" class="status-tag">CONNECTING...</span>
+      <span style="font-weight:900; color:var(--accent); font-size:18px;">SAMMY_POWER_v15</span>
+      <span id="status" style="font-size:10px; color:var(--green); font-weight:bold;">ONLINE</span>
     </div>
 
     <div class="module">
-      <div class="label">Institutional Capital</div>
+      <div class="label">Your Capital</div>
       <div id="walletUI" class="val" style="color:var(--gold);">$50,000.00</div>
     </div>
 
     <div class="module">
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
         <div>
-          <div class="label">Active Bots</div>
-          <div class="val" style="font-size:16px; color:#fff;">500,000</div>
+          <div class="label">Whale Power</div>
+          <div class="val" style="font-size:14px; color:var(--red);">100X BOOST</div>
         </div>
         <div>
           <div class="label">Real Users</div>
@@ -65,7 +71,7 @@
     </div>
 
     <div class="module">
-      <div class="label">Matching Liquidity (Zero-Sum)</div>
+      <div class="label">Liquidity Depth</div>
       <div class="liq-track">
         <div id="buyBar"></div>
         <div id="sellBar"></div>
@@ -81,10 +87,10 @@
       <div id="priceUI" class="val" style="font-size:32px; color:#fff;">$0.0000</div>
       <input type="number" id="lotInput" value="50000" step="1000">
       <div class="btn-wrap">
-        <button class="btn buy" id="buyBtn">Long/Pump</button>
-        <button class="btn sell" id="sellBtn">Short/Dump</button>
+        <button class="btn buy" id="buyBtn">PUMP MARKET</button>
+        <button class="btn sell" id="sellBtn">DUMP MARKET</button>
       </div>
-      <button class="btn exit" id="exitBtn" onclick="manualExit()">Close Execution</button>
+      <button class="btn exit" id="exitBtn" onclick="manualExit()">CLOSE POSITION</button>
       <div id="pnlUI" style="margin-top:15px; font-size:24px; text-align:center; font-weight:900;">PNL: $0.00</div>
     </div>
 
@@ -92,35 +98,28 @@
   </aside>
 
   <main class="chart-area">
+    <div class="tf-bar">
+      <button class="tf-btn active" onclick="setTF(1)">1M</button>
+      <button class="tf-btn" onclick="setTF(240)">4H</button>
+      <button class="tf-btn" onclick="setTF(1440)">1D</button>
+    </div>
     <div id="chart" style="width:100%; height:100%;"></div>
   </main>
 </div>
 
 <script>
   const socket = io("https://sammy-terminal.onrender.com");
-  let price = 100, serverHistory = [], pos = {side: null, entry: 0, size: 0};
-  let wallet = 50000;
+  let rawHistory = [], timeframe = 1; // minutes
+  let price = 100, pos = {side: null, entry: 0, size: 0}, wallet = 50000;
 
-  socket.on('connect', () => {
-    document.getElementById('status').innerText = "ONLINE";
-    log("SYSTEM_LIVE: Order matching enabled.", "var(--accent)");
-  });
-
-  socket.on('initData', (data) => {
-    serverHistory = data;
-    renderChart();
-  });
-
-  // Socket count for real users
-  socket.on('userCountUpdate', (count) => {
-    document.getElementById('actBots').innerText = count;
-  });
+  socket.on('initData', (data) => { rawHistory = data; renderChart(); });
+  socket.on('userCountUpdate', (count) => { document.getElementById('actBots').innerText = count; });
 
   socket.on('marketUpdate', (data) => {
     price = data.price;
-    serverHistory = data.history;
+    rawHistory = data.history;
     
-    // Liquidity Logic
+    // Liquidity UI
     const total = (data.buyQty || 0) + (data.sellQty || 0) || 1;
     document.getElementById('buyBar').style.width = ((data.buyQty || 0) / total * 100) + "%";
     document.getElementById('sellBar').style.width = ((data.sellQty || 0) / total * 100) + "%";
@@ -132,24 +131,44 @@
     renderChart();
   });
 
-  socket.on('orderLog', (data) => {
-    const l = document.getElementById('logs');
-    l.innerHTML = `<div style="color:${data.color}">[${new Date().toLocaleTimeString()}] ${data.msg}</div>` + l.innerHTML;
-  });
+  function setTF(minutes) {
+    timeframe = minutes;
+    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    renderChart();
+  }
+
+  function aggregateData(data, tf) {
+    if (tf === 1) return data;
+    let aggregated = [];
+    for (let i = 0; i < data.length; i += tf) {
+      let chunk = data.slice(i, i + tf);
+      if (chunk.length === 0) continue;
+      aggregated.push({
+        x: chunk[0].x,
+        open: chunk[0].open,
+        high: Math.max(...chunk.map(c => c.high)),
+        low: Math.min(...chunk.map(c => c.low)),
+        close: chunk[chunk.length - 1].close
+      });
+    }
+    return aggregated;
+  }
 
   function renderChart() {
+    const displayData = aggregateData(rawHistory, timeframe);
     Plotly.react('chart', [{
-      x: serverHistory.map(c => new Date(c.x)),
-      open: serverHistory.map(c => c.open),
-      high: serverHistory.map(c => c.high),
-      low: serverHistory.map(c => c.low),
-      close: serverHistory.map(c => c.close),
+      x: displayData.map(c => new Date(c.x)),
+      open: displayData.map(c => c.open),
+      high: displayData.map(c => c.high),
+      low: displayData.map(c => c.low),
+      close: displayData.map(c => c.close),
       type: 'candlestick',
       increasing: {line: {color: '#10b981'}, fillcolor: '#10b981'},
       decreasing: {line: {color: '#f43f5e'}, fillcolor: '#f43f5e'}
     }], {
       paper_bgcolor: '#000', plot_bgcolor: '#000', showlegend: false,
-      margin: {t: 20, b: 30, l: 40, r: 40},
+      margin: {t: 20, b: 30, l: 40, r: 50},
       xaxis: { gridcolor: '#1c1f26', color: '#6b7280', rangeslider: {visible: false}, type: 'date' },
       yaxis: { gridcolor: '#1c1f26', color: '#6b7280', side: 'right' }
     }, {displayModeBar: false});
@@ -188,7 +207,6 @@
     pos = {side:null, entry:0, size:0};
     document.getElementById('exitBtn').style.display = 'none';
     document.getElementById('pnlUI').innerText = "PNL: $0.00";
-    document.getElementById('walletUI').innerText = `$${wallet.toFixed(2)}`;
   }
 
   function log(m, c) {
