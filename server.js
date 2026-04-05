@@ -20,42 +20,40 @@ let history = [];
 let buyOrders = []; 
 let sellOrders = []; 
 let userWallets = {}; 
+let lockedUsers = {}; // 3-Minute Penalty Tracking
 
-// --- SMART AI BOTS ENGINE (Whale vs Retailer Hierarchy) ---
+// --- SMART WHALE ENGINE (WhatsApp Signal Logic) ---
 const runSmartBots = () => {
     setInterval(() => {
         const botType = Math.random();
         
+        // WhatsApp Smart Signal: Whale tabhi enter karegi jab extreme momentum ho (2% chance)
         if (botType > 0.98) { 
-            // 1. GOD-MODE WHALE BOT (100x Your Power)
-            // Ye bots market ka trend palatne ki taqat rakhte hain
-            const whaleSize = Math.floor(Math.random() * 5000000) + 1000000; // 1M to 5M lots
             const side = Math.random() > 0.5 ? 'buy' : 'sell';
-            processTradeMatching(side, whaleSize, "CORE_WHALE_INSTITUTION");
+            const whaleSize = Math.floor(Math.random() * 5000000) + 1000000; 
+            processTradeMatching(side, whaleSize, "WHALE_SMART_SIGNAL");
         } 
-        else if (botType > 0.85) {
-            // 2. INSTITUTIONAL BOT (High Power)
+        // Institutional Banks (15% chance)
+        else if (botType > 0.83) {
             const instSize = Math.floor(Math.random() * 800000) + 200000;
             const side = Math.random() > 0.5 ? 'buy' : 'sell';
-            processTradeMatching(side, instSize, "BANK_OF_ALGO");
+            processTradeMatching(side, instSize, "INSTITUTIONAL_BANK");
         }
+        // Retail Bots (Constant noise/liquidity)
         else {
-            // 3. RETAILER BOTS (Your Level)
-            // Ye bots market mein normal liquidity aur noise banate hain
             let retailSize = Math.floor(Math.random() * 40000) + 5000;
             buyOrders.push({ id: 'RETAIL_BOT', size: retailSize });
             sellOrders.push({ id: 'RETAIL_BOT', size: retailSize });
             
-            if(buyOrders.length > 60) buyOrders.shift();
-            if(sellOrders.length > 60) sellOrders.shift();
+            if(buyOrders.length > 100) buyOrders.shift();
+            if(sellOrders.length > 100) sellOrders.shift();
         }
-    }, 2000);
+    }, 1500); // Faster bot frequency for 1s charts
 };
 
-// --- ORDER MATCHING & PRICE IMPACT LOGIC ---
+// --- ORDER MATCHING & PRICE IMPACT ---
 function processTradeMatching(side, size, traderID) {
-    // Price Impact: Badi quantity se market hilega
-    let impact = size / 120000; 
+    let impact = size / 110000; 
     let matched = false;
 
     if (side === 'buy') {
@@ -80,7 +78,7 @@ function processTradeMatching(side, size, traderID) {
 
     if (matched) {
         io.emit('orderLog', { 
-            msg: `EXECUTED: ${traderID} matched ${size.toLocaleString()} lots.`,
+            msg: `SIGNAL_MATCHED: ${traderID} | ${side.toUpperCase()} ${size.toLocaleString()} lots.`,
             color: side === 'buy' ? '#10b981' : '#f43f5e'
         });
     }
@@ -99,22 +97,16 @@ function reduceLiquidity(orderArray, sizeToReduce) {
     }
 }
 
-// --- CORE MARKET ENGINE (Candle Synchronization) ---
+// --- CORE MARKET ENGINE (1-Second Tick) ---
 setInterval(() => {
-  marketPrice += (Math.random() - 0.5) * 0.012; // Natural Volatility
+  marketPrice += (Math.random() - 0.5) * 0.015; 
   
   let now = Date.now();
-  // 1 Minute Candle Core Logic
-  if (history.length === 0 || now - history[history.length-1].x >= 60000) {
-    let open = history.length > 0 ? history[history.length-1].close : marketPrice;
-    history.push({ x: now, open, high: marketPrice, low: marketPrice, close: marketPrice });
-    if(history.length > 200) history.shift();
-  } else {
-    let last = history[history.length-1];
-    last.high = Math.max(last.high, marketPrice);
-    last.low = Math.min(last.low, marketPrice);
-    last.close = marketPrice;
-  }
+  // Server hamesha 1-second ticks store karta hai, client ise aggregate karega
+  history.push({ x: now, open: marketPrice, high: marketPrice, low: marketPrice, close: marketPrice });
+  
+  // Keep last 10,000 seconds for 1D timeframe aggregation
+  if(history.length > 10000) history.shift();
 
   io.emit('marketUpdate', { 
     price: marketPrice, 
@@ -134,28 +126,40 @@ io.on('connection', (socket) => {
   socket.emit('initData', history);
 
   socket.on('executeTrade', (data) => {
-    if (userWallets[socket.id] <= 0) {
-        socket.emit('orderLog', { msg: "REJECTED: Margin Call / Bankrupt!", color: "#ff0000" });
+    let now = Date.now();
+
+    // Check for 3-minute lock
+    if (lockedUsers[socket.id] && now < lockedUsers[socket.id]) {
+        socket.emit('orderLog', { msg: "ACCOUNT_LOCKED: Wait for penalty to expire.", color: "#f43f5e" });
         return;
     }
-    processTradeMatching(data.side, data.size, `PLAYER_${socket.id.substring(0,4)}`);
+
+    if (userWallets[socket.id] <= 0) {
+        lockedUsers[socket.id] = Date.now() + 180000; // 3 Minute Penalty
+        socket.emit('orderLog', { msg: "BANKRUPT! Account locked for 3 mins.", color: "#ff0000" });
+        return;
+    }
+
+    processTradeMatching(data.side, data.size, `TRADER_${socket.id.substring(0,4)}`);
   });
 
   socket.on('updateBalance', (newBalance) => {
     userWallets[socket.id] = newBalance;
     if (newBalance <= 0) {
-        io.emit('orderLog', { msg: `ACCOUNT_WIPED: PLAYER_${socket.id.substring(0,4)} has been liquidated!`, color: "#f43f5e" });
+        lockedUsers[socket.id] = Date.now() + 180000; 
+        io.emit('orderLog', { msg: `LIQUIDATED: TRADER_${socket.id.substring(0,4)} is out for 3 mins!`, color: "#f43f5e" });
     }
   });
 
   socket.on('disconnect', () => {
     activeUsers = Math.max(0, activeUsers - 1);
     delete userWallets[socket.id];
+    delete lockedUsers[socket.id];
     io.emit('userCountUpdate', activeUsers);
   });
 });
 
-runSmartBots(); // Power on the Institutions
+runSmartBots();
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Institutional Terminal Engine Live on ${PORT}`));
+server.listen(PORT, () => console.log(`Smart Institutional Engine Live on ${PORT}`));
