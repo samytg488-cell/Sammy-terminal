@@ -57,7 +57,7 @@
   <aside class="panel">
     <div style="font-weight:900; color:var(--accent); margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">GLOBAL TRADER FEED</div>
     <div class="bot-matrix">
-      <div class="stat-item"><span class="stat-label">Active Users</span><span class="stat-value" id="actBots" style="color:var(--green)">1</span></div>
+      <div class="stat-item"><span class="stat-label">Active Users</span><span class="stat-value" id="actBots" style="color:var(--green)">0</span></div>
       <div class="stat-item"><span class="stat-label">System IQ</span><span class="stat-value">210.5</span></div>
     </div>
     
@@ -110,10 +110,9 @@
 </div>
 
 <script>
-  // Multiplayer Connection
   const socket = io("https://sammy-terminal.onrender.com");
 
-  let price = 100.00, lastClose = 100.00, tf = 1, t = 0;
+  let price = 100.00, tf = 1, t = 0;
   let baseCandles = [], current1m = null, pos = {side: null, entry: 0, size: 0};
   let resting = [];
 
@@ -122,31 +121,20 @@
     log("CONNECTED TO GLOBAL ENGINE", "var(--green)");
   });
 
-  // Server se price lene ke liye
+  // User count update from server
+  socket.on('userCountUpdate', (count) => {
+    document.getElementById('actBots').innerText = count;
+  });
+
+  // Main Market Engine (ONLY runs when server sends update)
   socket.on('marketUpdate', (data) => {
     price = data.price;
-    updateEngine();
-  });
-
-  // Doston ke trades dekhne ke liye
-  socket.on('orderLog', (data) => {
-    const l = document.getElementById('logs');
-    l.innerHTML = `<div style="color:${data.color}">[${new Date().toLocaleTimeString()}] ${data.msg}</div>` + l.innerHTML;
-  });
-
-  function updateEngine() {
-    t++;
-    // Limit order checking logic
-    resting = resting.filter(o => {
-      if((o.side==='buy' && price <= o.px) || (o.side==='sell' && price >= o.px)) {
-        openPosition(o.side, o.px, o.size);
-        return false;
-      }
-      return true;
-    });
-    renderResting();
-
-    // Candle building
+    t++; // Sync internal clock with server tick
+    
+    // Check Limits
+    checkLimitOrders();
+    
+    // Build Candles (1m Base)
     if (!current1m || t % 60 === 0) {
       if(current1m) baseCandles.push({...current1m});
       current1m = { x: new Date(), open: price, high: price, low: price, close: price };
@@ -158,12 +146,28 @@
     }
 
     renderUI();
+    updateTimer();
+  });
+
+  socket.on('orderLog', (data) => {
+    const l = document.getElementById('logs');
+    l.innerHTML = `<div style="color:${data.color}">[${new Date().toLocaleTimeString()}] ${data.msg}</div>` + l.innerHTML;
+  });
+
+  function checkLimitOrders() {
+    resting = resting.filter(o => {
+      if((o.side==='buy' && price <= o.px) || (o.side==='sell' && price >= o.px)) {
+        openPosition(o.side, o.px, o.size);
+        return false;
+      }
+      return true;
+    });
+    renderResting();
   }
 
   function renderUI() {
     document.getElementById('priceUI').innerText = `$${price.toFixed(2)}`;
     
-    // PNL Logic
     if(pos.side) {
       let pnl = (pos.side==='buy' ? price - pos.entry : pos.entry - price) * pos.size;
       const pbox = document.getElementById('pnlUI');
@@ -171,7 +175,7 @@
       pbox.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
     }
 
-    // Chart update
+    // Process Chart Data based on TF
     let displayData = [...baseCandles, current1m];
     Plotly.react('chart', [{
       x: displayData.map(c=>c.x), open: displayData.map(c=>c.open),
@@ -182,6 +186,11 @@
       paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', showlegend:false,
       margin:{t:50, b:40, l:60, r:10}, xaxis:{gridcolor:'#1c1f26', color:'#6b7280'}, yaxis:{gridcolor:'#1c1f26', color:'#6b7280'}
     }, {displayModeBar: false});
+  }
+
+  function updateTimer() {
+    let rem = (tf * 60) - (t % (tf * 60));
+    document.getElementById('timer').innerText = `${Math.floor(rem/60).toString().padStart(2,'0')}:${(rem%60).toString().padStart(2,'0')}`;
   }
 
   function openPosition(side, px, size) {
@@ -196,9 +205,6 @@
     document.getElementById('exitBtn').style.display = 'none';
     document.getElementById('pnlUI').innerText = "PNL: $0.00";
   }
-
-  document.getElementById('buyBtn').onclick = () => handleOrder('buy');
-  document.getElementById('sellBtn').onclick = () => handleOrder('sell');
 
   function handleOrder(side) {
     let type = document.getElementById('orderType').value;
@@ -223,6 +229,15 @@
 
   window.toggleLimit = () => {
     document.getElementById('limitBox').style.display = document.getElementById('orderType').value === 'limit' ? 'block' : 'none';
+  };
+
+  document.getElementById('buyBtn').onclick = () => handleOrder('buy');
+  document.getElementById('sellBtn').onclick = () => handleOrder('sell');
+
+  window.setTF = (v) => { 
+    tf = v; 
+    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active')); 
+    event.target.classList.add('active'); 
   };
 </script>
 </body>
