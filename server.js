@@ -22,69 +22,58 @@ let sellOrders = [];
 let userWallets = {}; 
 let lockedUsers = {}; 
 
-// --- SMART WHALE ENGINE (v18 Optimized) ---
+// --- DYNAMIC INSTITUTIONAL ALGO (v20 FIX) ---
 const runSmartBots = () => {
     setInterval(() => {
+        // --- LOGIC: Price Balance Check ---
+        // Agar price bahut high hai, toh SELL ka chance 70% hoga.
+        // Agar price bahut low hai, toh BUY ka chance 70% hoga.
+        let buyProbability = 0.5; 
+        if (marketPrice > 105) buyProbability = 0.3; // High price? Bots will dump.
+        if (marketPrice < 95) buyProbability = 0.7;  // Low price? Bots will pump.
+
         const botType = Math.random();
-        
-        // 1. WHALE SIGNAL (High Impact)
-        if (botType > 0.98) { 
-            const side = Math.random() > 0.5 ? 'buy' : 'sell';
-            const whaleSize = Math.floor(Math.random() * 5000000) + 2000000;
-            processTradeMatching(side, whaleSize, "WHALE_BOT");
+        const side = Math.random() < buyProbability ? 'buy' : 'sell';
+
+        // 1. WHALE SIGNAL (Strategic Movement)
+        if (botType > 0.96) { 
+            const whaleSize = Math.floor(Math.random() * 5000000) + 3000000;
+            processTradeMatching(side, whaleSize, "WHALE_ALGO");
         } 
-        // 2. INSTITUTIONAL ALGO
-        else if (botType > 0.85) {
-            const instSize = Math.floor(Math.random() * 1000000) + 500000;
-            const side = Math.random() > 0.5 ? 'buy' : 'sell';
-            processTradeMatching(side, instSize, "INST_ALGO");
+        // 2. INSTITUTIONAL FLOW
+        else if (botType > 0.75) {
+            const instSize = Math.floor(Math.random() * 1000000) + 200000;
+            processTradeMatching(side, instSize, "INST_DUMP_PUMP");
         }
-        // 3. RETAIL LIQUIDITY (Har 1.5s mein liquidity refresh hogi taaki trades execute ho sakein)
+        // 3. RETAIL LIQUIDITY (Dono taraf order book bharna)
         else {
-            let retailSize = Math.floor(Math.random() * 50000) + 10000;
-            buyOrders.push({ id: 'RETAIL_BOT', size: retailSize });
-            sellOrders.push({ id: 'RETAIL_BOT', size: retailSize });
+            let retailSize = Math.floor(Math.random() * 80000) + 20000;
+            buyOrders.push({ id: 'LP', size: retailSize });
+            sellOrders.push({ id: 'LP', size: retailSize });
             
-            // Liquidity Buffer maintain rakhna zaroori hai
-            if(buyOrders.length > 150) buyOrders.shift();
-            if(sellOrders.length > 150) sellOrders.shift();
+            if(buyOrders.length > 100) buyOrders.shift();
+            if(sellOrders.length > 100) sellOrders.shift();
         }
-    }, 1500); 
+    }, 1200); 
 };
 
-// --- MATCHING ENGINE (Execution Fix) ---
+// --- MATCHING ENGINE ---
 function processTradeMatching(side, size, traderID) {
-    // Impact factor ko thoda balance kiya hai taaki PNL real-time hile
-    let impact = size / 105000; 
-    let matched = false;
-
+    let impact = size / 100000; 
+    
+    // Instant execution for better chart feel
     if (side === 'buy') {
-        const totalSellLiquidity = sellOrders.reduce((a, b) => a + b.size, 0);
-        if (totalSellLiquidity >= size) {
-            reduceLiquidity(sellOrders, size);
-            marketPrice += impact;
-            matched = true;
-        } else {
-            // Agar liquidity kam hai toh partial match logic ki jagah order queue mein jayega
-            buyOrders.push({ id: traderID, size: size });
-        }
+        marketPrice += impact;
+        reduceLiquidity(sellOrders, size);
     } else {
-        const totalBuyLiquidity = buyOrders.reduce((a, b) => a + b.size, 0);
-        if (totalBuyLiquidity >= size) {
-            reduceLiquidity(buyOrders, size);
-            marketPrice -= impact;
-            matched = true;
-        } else {
-            sellOrders.push({ id: traderID, size: size });
-        }
+        marketPrice -= impact;
+        reduceLiquidity(buyOrders, size);
     }
 
-    if (matched) {
-        io.emit('orderLog', { 
-            msg: `EXECUTED: ${traderID} | ${size.toLocaleString()} lots`,
-            color: side === 'buy' ? '#10b981' : '#f43f5e'
-        });
-    }
+    io.emit('orderLog', { 
+        msg: `EXECUTED: ${traderID} | ${size.toLocaleString()} lots`,
+        color: side === 'buy' ? '#10b981' : '#f43f5e'
+    });
 }
 
 function reduceLiquidity(orderArray, sizeToReduce) {
@@ -100,24 +89,25 @@ function reduceLiquidity(orderArray, sizeToReduce) {
     }
 }
 
-// --- CORE MARKET ENGINE (1s Tick) ---
+// --- CORE MARKET HEARTBEAT (1s) ---
 setInterval(() => {
-  marketPrice += (Math.random() - 0.5) * 0.02; // Thoda fast price movement
+  // Natural market jitter
+  marketPrice += (Math.random() - 0.5) * 0.04; 
   let now = Date.now();
 
-  history.push({ x: now, open: marketPrice, high: marketPrice, low: marketPrice, close: marketPrice });
-  if(history.length > 10000) history.shift();
+  history.push({ x: now, open: marketPrice, high: marketPrice + 0.01, low: marketPrice - 0.01, close: marketPrice });
+  if(history.length > 5000) history.shift();
 
   io.emit('marketUpdate', { 
     price: marketPrice, 
     activeUsers: activeUsers,
     history: history,
-    buyQty: buyOrders.reduce((a, b) => a + b.size, 0),
-    sellQty: sellOrders.reduce((a, b) => a + b.size, 0)
+    buyQty: buyOrders.reduce((a, b) => a + b.size, 0) + 1000000, // Extra depth for visuals
+    sellQty: sellOrders.reduce((a, b) => a + b.size, 0) + 1000000
   });
 }, 1000);
 
-// --- CONNECTION HANDLER ---
+// --- SOCKET CONNECTION ---
 io.on('connection', (socket) => {
   activeUsers++;
   userWallets[socket.id] = 50000; 
@@ -125,25 +115,17 @@ io.on('connection', (socket) => {
   io.emit('userCountUpdate', activeUsers);
   socket.emit('initData', history);
 
-  // Frontend se trade request receive karna
   socket.on('executeTrade', (data) => {
     let now = Date.now();
-
-    // Lockdown Check
-    if (lockedUsers[socket.id] && now < lockedUsers[socket.id]) {
-        return socket.emit('orderLog', { msg: "SYSTEM_LOCKED: Wait for Reset", color: "#f43f5e" });
-    }
-
-    // Trade Process
+    if (lockedUsers[socket.id] && now < lockedUsers[socket.id]) return;
     processTradeMatching(data.side, data.size, `PLAYER_${socket.id.substring(0,4)}`);
   });
 
-  // Balance Update (Exit ke time ya Liquidation par)
   socket.on('updateBalance', (newBalance) => {
     userWallets[socket.id] = newBalance;
     if (newBalance <= 0) {
-        lockedUsers[socket.id] = Date.now() + 180000; // 3 Min Lock
-        io.emit('orderLog', { msg: `LIQUIDATED: PLAYER_${socket.id.substring(0,4)} is out!`, color: "#f43f5e" });
+        lockedUsers[socket.id] = Date.now() + 180000;
+        io.emit('orderLog', { msg: `LIQUIDATED: TRADER_${socket.id.substring(0,4)}`, color: "#f43f5e" });
     }
   });
 
@@ -158,4 +140,4 @@ io.on('connection', (socket) => {
 runSmartBots();
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Institutional Engine v18 Live on ${PORT}`));
+server.listen(PORT, () => console.log(`Smart Algo Engine v20 Live on ${PORT}`));
