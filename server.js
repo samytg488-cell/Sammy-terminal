@@ -20,42 +20,40 @@ let history = [];
 let buyOrders = []; 
 let sellOrders = []; 
 let userWallets = {}; 
+let lockedUsers = {}; // 3-Minute Penalty Tracking
 
-// --- SMART AI BOTS ENGINE (Whale vs Retailer Hierarchy) ---
+// --- SMART WHALE ENGINE (WhatsApp Signal Style) ---
 const runSmartBots = () => {
     setInterval(() => {
         const botType = Math.random();
         
+        // 1. WHALE SIGNAL (2% chance) - High Impact
         if (botType > 0.98) { 
-            // 1. GOD-MODE WHALE BOT (100x Your Power)
-            // Ye bots market ka trend palatne ki taqat rakhte hain
-            const whaleSize = Math.floor(Math.random() * 5000000) + 1000000; // 1M to 5M lots
             const side = Math.random() > 0.5 ? 'buy' : 'sell';
-            processTradeMatching(side, whaleSize, "CORE_WHALE_INSTITUTION");
+            const whaleSize = Math.floor(Math.random() * 5000000) + 1000000;
+            processTradeMatching(side, whaleSize, "WHALE_SIGNAL_BOT");
         } 
-        else if (botType > 0.85) {
-            // 2. INSTITUTIONAL BOT (High Power)
+        // 2. INSTITUTIONAL ALGO (15% chance)
+        else if (botType > 0.83) {
             const instSize = Math.floor(Math.random() * 800000) + 200000;
             const side = Math.random() > 0.5 ? 'buy' : 'sell';
-            processTradeMatching(side, instSize, "BANK_OF_ALGO");
+            processTradeMatching(side, instSize, "INSTITUTIONAL_ALGO");
         }
+        // 3. RETAIL LIQUIDITY (Constant)
         else {
-            // 3. RETAILER BOTS (Your Level)
-            // Ye bots market mein normal liquidity aur noise banate hain
-            let retailSize = Math.floor(Math.random() * 40000) + 5000;
+            let retailSize = Math.floor(Math.random() * 30000) + 5000;
             buyOrders.push({ id: 'RETAIL_BOT', size: retailSize });
             sellOrders.push({ id: 'RETAIL_BOT', size: retailSize });
             
-            if(buyOrders.length > 60) buyOrders.shift();
-            if(sellOrders.length > 60) sellOrders.shift();
+            if(buyOrders.length > 100) buyOrders.shift();
+            if(sellOrders.length > 100) sellOrders.shift();
         }
-    }, 2000);
+    }, 1500); // Scalping frequency
 };
 
-// --- ORDER MATCHING & PRICE IMPACT LOGIC ---
+// --- MATCHING ENGINE ---
 function processTradeMatching(side, size, traderID) {
-    // Price Impact: Badi quantity se market hilega
-    let impact = size / 120000; 
+    let impact = size / 110000; 
     let matched = false;
 
     if (side === 'buy') {
@@ -80,7 +78,7 @@ function processTradeMatching(side, size, traderID) {
 
     if (matched) {
         io.emit('orderLog', { 
-            msg: `EXECUTED: ${traderID} matched ${size.toLocaleString()} lots.`,
+            msg: `SIGNAL_EXECUTED: ${traderID} | ${size.toLocaleString()} lots`,
             color: side === 'buy' ? '#10b981' : '#f43f5e'
         });
     }
@@ -99,22 +97,16 @@ function reduceLiquidity(orderArray, sizeToReduce) {
     }
 }
 
-// --- CORE MARKET ENGINE (Candle Synchronization) ---
+// --- CORE MARKET ENGINE (1-Second Heartbeat) ---
 setInterval(() => {
-  marketPrice += (Math.random() - 0.5) * 0.012; // Natural Volatility
-  
+  marketPrice += (Math.random() - 0.5) * 0.015; 
   let now = Date.now();
-  // 1 Minute Candle Core Logic
-  if (history.length === 0 || now - history[history.length-1].x >= 60000) {
-    let open = history.length > 0 ? history[history.length-1].close : marketPrice;
-    history.push({ x: now, open, high: marketPrice, low: marketPrice, close: marketPrice });
-    if(history.length > 200) history.shift();
-  } else {
-    let last = history[history.length-1];
-    last.high = Math.max(last.high, marketPrice);
-    last.low = Math.min(last.low, marketPrice);
-    last.close = marketPrice;
-  }
+
+  // Har second raw data push karein taaki 1s/2s chart chale
+  history.push({ x: now, open: marketPrice, high: marketPrice, low: marketPrice, close: marketPrice });
+  
+  // Memory management: Last 15,000 ticks (~4 hours of 1s data)
+  if(history.length > 15000) history.shift();
 
   io.emit('marketUpdate', { 
     price: marketPrice, 
@@ -125,7 +117,7 @@ setInterval(() => {
   });
 }, 1000);
 
-// --- CONNECTION HANDLER ---
+// --- CONNECTION & LOCK LOGIC ---
 io.on('connection', (socket) => {
   activeUsers++;
   userWallets[socket.id] = 50000; 
@@ -134,28 +126,41 @@ io.on('connection', (socket) => {
   socket.emit('initData', history);
 
   socket.on('executeTrade', (data) => {
-    if (userWallets[socket.id] <= 0) {
-        socket.emit('orderLog', { msg: "REJECTED: Margin Call / Bankrupt!", color: "#ff0000" });
+    let now = Date.now();
+
+    // 3-Minute Penalty Check
+    if (lockedUsers[socket.id] && now < lockedUsers[socket.id]) {
+        let wait = Math.ceil((lockedUsers[socket.id] - now) / 1000);
+        socket.emit('orderLog', { msg: `ACCOUNT_LOCKED: Wait ${wait}s`, color: "#f43f5e" });
         return;
     }
-    processTradeMatching(data.side, data.size, `PLAYER_${socket.id.substring(0,4)}`);
+
+    if (userWallets[socket.id] <= 0) {
+        lockedUsers[socket.id] = Date.now() + 180000; // 3 Min Lock
+        socket.emit('orderLog', { msg: "BANKRUPT! Account locked for 3 mins.", color: "#ff0000" });
+        return;
+    }
+
+    processTradeMatching(data.side, data.size, `TRADER_${socket.id.substring(0,4)}`);
   });
 
   socket.on('updateBalance', (newBalance) => {
     userWallets[socket.id] = newBalance;
     if (newBalance <= 0) {
-        io.emit('orderLog', { msg: `ACCOUNT_WIPED: PLAYER_${socket.id.substring(0,4)} has been liquidated!`, color: "#f43f5e" });
+        lockedUsers[socket.id] = Date.now() + 180000;
+        io.emit('orderLog', { msg: `LIQUIDATED: TRADER_${socket.id.substring(0,4)} lost everything!`, color: "#f43f5e" });
     }
   });
 
   socket.on('disconnect', () => {
     activeUsers = Math.max(0, activeUsers - 1);
     delete userWallets[socket.id];
+    delete lockedUsers[socket.id];
     io.emit('userCountUpdate', activeUsers);
   });
 });
 
-runSmartBots(); // Power on the Institutions
+runSmartBots();
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Institutional Terminal Engine Live on ${PORT}`));
+server.listen(PORT, () => console.log(`Smart Engine Live on ${PORT}`));
