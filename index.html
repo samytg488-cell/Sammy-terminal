@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>SAMMY SUPREME - INSTITUTIONAL TERMINAL v20</title>
+<title>SAMMY SUPREME - INSTITUTIONAL TERMINAL</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <style>
@@ -11,54 +11,80 @@
     --text: #d1d5db; --accent: #38bdf8; --green: #10b981; --red: #f43f5e; --gold: #fbbf24;
   }
   body, html { margin:0; padding:0; width:100%; height:100%; background:var(--bg); color:var(--text); font-family: 'JetBrains Mono', monospace; overflow:hidden; }
+  
+  /* Layout: Left Sidebar (350px) and Right Chart (Full Center/Right) */
   .container { display: grid; grid-template-columns: 350px 1fr; height: 100vh; }
+
   .sidebar { background: var(--panel); border-right: 2px solid var(--border); display: flex; flex-direction: column; padding: 20px; gap: 15px; overflow-y: auto; z-index: 10; }
   .chart-area { background: #000; position: relative; display: flex; flex-direction: column; }
-  .tf-bar { position: absolute; top: 15px; left: 15px; z-index: 100; display: flex; gap: 4px; background: rgba(0,0,0,0.8); padding: 5px; border-radius: 6px; border: 1px solid var(--border); }
-  .tf-btn { background: #161b22; border: 1px solid var(--border); color: var(--text); padding: 5px 10px; cursor: pointer; border-radius: 4px; font-size: 10px; font-weight: bold; }
-  .tf-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
-  .module { background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 12px; border-radius: 10px; }
-  .label { font-size: 9px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
-  .val { font-size: 22px; font-weight: 900; }
-  .slider-box { margin-top: 10px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; border: 1px solid var(--border); }
-  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
-  input[type=number] { background: #000; border: 1px solid var(--border); color: var(--green); padding: 12px; width: 100%; border-radius: 6px; margin-bottom: 10px; font-weight: bold; outline: none; }
+  
+  .module { background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 15px; border-radius: 10px; }
+  .label { font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+  .val { font-size: 24px; font-weight: 900; }
+
+  input { background: #000; border: 1px solid var(--border); color: var(--green); padding: 12px; width: 100%; box-sizing: border-box; border-radius: 6px; margin-bottom: 10px; font-weight: bold; font-size: 16px; outline: none; }
   .btn-wrap { display: flex; gap: 10px; }
-  .btn { border: none; padding: 18px; border-radius: 8px; cursor: pointer; font-weight: 900; width: 100%; text-transform: uppercase; }
+  .btn { border: none; padding: 18px; border-radius: 8px; cursor: pointer; font-weight: 900; width: 100%; text-transform: uppercase; transition: 0.2s; }
   .buy { background: var(--green); color: #000; }
   .sell { background: var(--red); color: #fff; }
-  .exit { background: #333; color: #fff; margin-top: 10px; width: 100%; font-weight: 900; border-radius: 8px; padding: 12px; cursor: pointer; border: none; display: none; }
-  #logs { font-size: 10px; color: #6b7280; flex: 1; overflow-y: auto; border-top: 1px solid var(--border); padding-top: 10px; }
+  .exit { background: #333; color: #fff; margin-top: 10px; width: 100%; display: none; }
+
+  .liq-track { height: 6px; background: #1c1f26; border-radius: 3px; margin: 10px 0; overflow: hidden; display: flex; }
+  #buyBar { background: var(--green); width: 50%; transition: 0.4s; }
+  #sellBar { background: var(--red); width: 50%; transition: 0.4s; }
+
+  #logs { font-size: 11px; color: #6b7280; flex: 1; overflow-y: auto; border-top: 1px solid var(--border); padding-top: 15px; line-height: 1.6; }
+  .status-tag { font-size: 10px; color: var(--green); font-weight: bold; }
 </style>
 </head>
 <body>
 
 <div class="container">
   <aside class="sidebar">
-    <div style="font-weight:900; color:var(--accent); font-size:18px;">SAMMY_v20_ALGO</div>
-    
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-weight:900; color:var(--accent); font-size:18px;">SAMMY_v15_PRO</span>
+      <span id="status" class="status-tag">CONNECTING...</span>
+    </div>
+
     <div class="module">
-      <div class="label">Balance</div>
+      <div class="label">Institutional Capital</div>
       <div id="walletUI" class="val" style="color:var(--gold);">$50,000.00</div>
     </div>
 
     <div class="module">
-      <div class="label">Live Market Price</div>
-      <div id="priceUI" class="val" style="font-size:32px; color:#fff;">$100.0000</div>
-      <input type="number" id="lotInput" value="50000">
-      
-      <div class="slider-box">
-        <div style="display:flex; justify-content:space-between; font-size:10px;"><span>STOP LOSS</span><span id="slVal">1.5</span></div>
-        <input type="range" id="slSlider" min="0.1" max="10" step="0.1" value="1.5">
-        <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:10px;"><span>TAKE PROFIT</span><span id="tpVal">3.0</span></div>
-        <input type="range" id="tpSlider" min="0.1" max="20" step="0.1" value="3.0">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+        <div>
+          <div class="label">Active Bots</div>
+          <div class="val" style="font-size:16px; color:#fff;">500,000</div>
+        </div>
+        <div>
+          <div class="label">Real Users</div>
+          <div id="actBots" class="val" style="font-size:16px; color:var(--gold);">1</div>
+        </div>
       </div>
+    </div>
 
-      <div class="btn-wrap" style="margin-top:15px;">
-        <button class="btn buy" id="buyBtn">PUMP</button>
-        <button class="btn sell" id="sellBtn">DUMP</button>
+    <div class="module">
+      <div class="label">Matching Liquidity (Zero-Sum)</div>
+      <div class="liq-track">
+        <div id="buyBar"></div>
+        <div id="sellBar"></div>
       </div>
-      <button class="exit" id="exitBtn" onclick="manualExit()">CLOSE POSITION</button>
+      <div style="display:flex; justify-content:space-between; font-size:10px;">
+        <span>B: <b id="bq">0</b></span>
+        <span>S: <b id="sq">0</b></span>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="label">Market Price</div>
+      <div id="priceUI" class="val" style="font-size:32px; color:#fff;">$0.0000</div>
+      <input type="number" id="lotInput" value="50000" step="1000">
+      <div class="btn-wrap">
+        <button class="btn buy" id="buyBtn">Long/Pump</button>
+        <button class="btn sell" id="sellBtn">Short/Dump</button>
+      </div>
+      <button class="btn exit" id="exitBtn" onclick="manualExit()">Close Execution</button>
       <div id="pnlUI" style="margin-top:15px; font-size:24px; text-align:center; font-weight:900;">PNL: $0.00</div>
     </div>
 
@@ -66,81 +92,108 @@
   </aside>
 
   <main class="chart-area">
-    <div class="tf-bar">
-      <button class="tf-btn active" onclick="setTF(1, 's')">1S</button>
-      <button class="tf-btn" onclick="setTF(1, 'm')">1M</button>
-    </div>
     <div id="chart" style="width:100%; height:100%;"></div>
   </main>
 </div>
 
 <script>
   const socket = io("https://sammy-terminal.onrender.com");
-  let rawHistory = [], price = 100, wallet = 50000;
-  let pos = { side: null, entry: 0, size: 0, sl: 0, tp: 0 };
-  let currentTFVal = 1, currentTFUnit = 's';
+  let price = 100, serverHistory = [], pos = {side: null, entry: 0, size: 0};
+  let wallet = 50000;
 
-  document.getElementById('slSlider').oninput = function() { document.getElementById('slVal').innerText = this.value; };
-  document.getElementById('tpSlider').oninput = function() { document.getElementById('tpVal').innerText = this.value; };
+  socket.on('connect', () => {
+    document.getElementById('status').innerText = "ONLINE";
+    log("SYSTEM_LIVE: Order matching enabled.", "var(--accent)");
+  });
+
+  socket.on('initData', (data) => {
+    serverHistory = data;
+    renderChart();
+  });
+
+  // Socket count for real users
+  socket.on('userCountUpdate', (count) => {
+    document.getElementById('actBots').innerText = count;
+  });
 
   socket.on('marketUpdate', (data) => {
     price = data.price;
-    rawHistory = data.history;
+    serverHistory = data.history;
+    
+    // Liquidity Logic
+    const total = (data.buyQty || 0) + (data.sellQty || 0) || 1;
+    document.getElementById('buyBar').style.width = ((data.buyQty || 0) / total * 100) + "%";
+    document.getElementById('sellBar').style.width = ((data.sellQty || 0) / total * 100) + "%";
+    document.getElementById('bq').innerText = (data.buyQty || 0).toLocaleString();
+    document.getElementById('sq').innerText = (data.sellQty || 0).toLocaleString();
+    
     document.getElementById('priceUI').innerText = `$${price.toFixed(4)}`;
     updatePNL();
     renderChart();
   });
 
-  function updatePNL() {
-    if (!pos.side) {
-        document.getElementById('pnlUI').innerText = "PNL: $0.00";
-        document.getElementById('walletUI').innerText = `$${wallet.toFixed(2)}`;
-        return;
-    }
-    let diff = pos.side === 'buy' ? price - pos.entry : pos.entry - price;
-    let pnl = diff * pos.size;
-    document.getElementById('pnlUI').innerText = `PNL: $${pnl.toFixed(2)}`;
-    document.getElementById('pnlUI').style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
-    document.getElementById('walletUI').innerText = `$${(wallet + pnl).toFixed(2)}`;
+  socket.on('orderLog', (data) => {
+    const l = document.getElementById('logs');
+    l.innerHTML = `<div style="color:${data.color}">[${new Date().toLocaleTimeString()}] ${data.msg}</div>` + l.innerHTML;
+  });
 
-    // SL/TP Check
-    if (diff <= -pos.sl || diff >= pos.tp) manualExit();
+  function renderChart() {
+    Plotly.react('chart', [{
+      x: serverHistory.map(c => new Date(c.x)),
+      open: serverHistory.map(c => c.open),
+      high: serverHistory.map(c => c.high),
+      low: serverHistory.map(c => c.low),
+      close: serverHistory.map(c => c.close),
+      type: 'candlestick',
+      increasing: {line: {color: '#10b981'}, fillcolor: '#10b981'},
+      decreasing: {line: {color: '#f43f5e'}, fillcolor: '#f43f5e'}
+    }], {
+      paper_bgcolor: '#000', plot_bgcolor: '#000', showlegend: false,
+      margin: {t: 20, b: 30, l: 40, r: 40},
+      xaxis: { gridcolor: '#1c1f26', color: '#6b7280', rangeslider: {visible: false}, type: 'date' },
+      yaxis: { gridcolor: '#1c1f26', color: '#6b7280', side: 'right' }
+    }, {displayModeBar: false});
+  }
+
+  function updatePNL() {
+    if(pos.side) {
+      let pnl = (pos.side==='buy' ? price - pos.entry : pos.entry - price) * pos.size;
+      const pbox = document.getElementById('pnlUI');
+      pbox.innerText = `PNL: $${pnl.toFixed(2)}`;
+      pbox.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+      document.getElementById('walletUI').innerText = `$${(wallet + pnl).toFixed(2)}`;
+    }
   }
 
   document.getElementById('buyBtn').onclick = () => {
-    if(pos.side) return;
-    pos = { side:'buy', entry:price, size:+document.getElementById('lotInput').value, sl:+document.getElementById('slSlider').value, tp:+document.getElementById('tpSlider').value };
+    let size = +document.getElementById('lotInput').value;
+    pos = {side: 'buy', entry: price, size};
     document.getElementById('exitBtn').style.display = 'block';
-    socket.emit('executeTrade', { side: 'buy', size: pos.size });
+    socket.emit('executeTrade', {side: 'buy', size});
   };
 
   document.getElementById('sellBtn').onclick = () => {
-    if(pos.side) return;
-    pos = { side:'sell', entry:price, size:+document.getElementById('lotInput').value, sl:+document.getElementById('slSlider').value, tp:+document.getElementById('tpSlider').value };
+    let size = +document.getElementById('lotInput').value;
+    pos = {side: 'sell', entry: price, size};
     document.getElementById('exitBtn').style.display = 'block';
-    socket.emit('executeTrade', { side: 'sell', size: pos.size });
+    socket.emit('executeTrade', {side: 'sell', size});
   };
 
   function manualExit() {
-    if (pos.side) {
-      wallet += (pos.side === 'buy' ? price - pos.entry : pos.entry - price) * pos.size;
-      socket.emit('updateBalance', wallet);
+    if(pos.side) {
+        let pnl = (pos.side==='buy' ? price - pos.entry : pos.entry - price) * pos.size;
+        wallet += pnl;
+        socket.emit('updateBalance', wallet);
     }
-    pos = { side: null, entry: 0, size: 0, sl: 0, tp: 0 };
+    pos = {side:null, entry:0, size:0};
     document.getElementById('exitBtn').style.display = 'none';
+    document.getElementById('pnlUI').innerText = "PNL: $0.00";
+    document.getElementById('walletUI').innerText = `$${wallet.toFixed(2)}`;
   }
 
-  function renderChart() {
-    const d = rawHistory.slice(-50);
-    const times = d.map(c => new Date(c.x));
-    Plotly.react('chart', [{
-      x: times, open: d.map(c => c.open), high: d.map(c => c.high), low: d.map(c => c.low), close: d.map(c => c.close),
-      type: 'candlestick', increasing: {line:{color:'#10b981'}}, decreasing: {line:{color:'#f43f5e'}}
-    }], {
-      paper_bgcolor:'#000', plot_bgcolor:'#000', showlegend:false, margin:{t:10,b:30,l:10,r:50},
-      xaxis:{ gridcolor:'#1c1f26', color:'#6b7280', type:'date' },
-      yaxis:{ gridcolor:'#1c1f26', color:'#6b7280', side:'right' }
-    }, {displayModeBar: false});
+  function log(m, c) {
+    const l = document.getElementById('logs');
+    l.innerHTML = `<div style="color:${c}">[${new Date().toLocaleTimeString()}] ${m}</div>` + l.innerHTML;
   }
 </script>
 </body>
